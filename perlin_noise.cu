@@ -14,8 +14,6 @@ void check(T err, const char* const func, const char* const file,
         std::cerr << "CUDA Runtime Error at: " << file << ":" << line
                   << std::endl;
         std::cerr << cudaGetErrorString(err) << " " << func << std::endl;
-        // We don't exit when we encounter CUDA errors in this example.
-        // std::exit(EXIT_FAILURE);
     }
 }
 
@@ -28,11 +26,8 @@ void checkLast(const char* const file, const int line)
         std::cerr << "CUDA Runtime Error at: " << file << ":" << line
                   << std::endl;
         std::cerr << cudaGetErrorString(err) << std::endl;
-        // We don't exit when we encounter CUDA errors in this example.
-        // std::exit(EXIT_FAILURE);
     }
 }
-
 
 static int SEED = 0;
 
@@ -54,6 +49,7 @@ int noise2(int x, int y) {
     return hash[(tmp + x) % 256];
 }
 
+// Get noise value for grid corner points
 __device__
 int noise2_gpu(int x, int y) {
     static int hash[] = {208,34,231,213,32,248,233,56,161,78,24,140,71,48,140,254,245,255,247,247,40,
@@ -83,11 +79,13 @@ float smooth_inter(float x, float y, float s) {
     return lin_inter(x, y, s * s * (3-2*s));
 }
 
+// Linear interpolation used in the smooth interpolation
 __device__
 float lin_inter_gpu(float x, float y, float s) {
     return x + s * (y-x);
 }
 
+// Smooth interpolation for smoother transition
 __device__
 float smooth_inter_gpu(float x, float y, float s) {
     return lin_inter_gpu(x, y, s * s * (3-2*s));
@@ -107,6 +105,7 @@ float noise2d(float x, float y) {
     return smooth_inter(low, high, y_frac);
 }
 
+// Calculate noise value for target point by calculating one octave on the gpu
 __device__
 float noise2d_gpu(float x, float y) {
     int x_int = x;
@@ -122,14 +121,15 @@ float noise2d_gpu(float x, float y) {
     return smooth_inter_gpu(low, high, y_frac);
 }
 
-float perlin2d(float x, float y, float freq, int depth) {
+// Calculate the noise value for one point by calculating all octave values and adding them according to the amplitude
+float perlin2d(float x, float y, float freq, int octaves) {
     float xa = x*freq;
     float ya = y*freq;
     float amp = 1.0;
     float fin = 0;
     float div = 0.0;
 
-    for(int i=0; i<depth; i++)
+    for(int i=0; i<octaves; i++)
     {
         div += 256 * amp;
         fin += noise2d(xa, ya) * amp;
@@ -141,6 +141,7 @@ float perlin2d(float x, float y, float freq, int depth) {
     return fin/div;
 }
 
+// Calculate all noise values for the texture on the cpu
 float* perlin2d_cpu(int size, double frequency, int octaves) {
     float* noise = (float*)malloc(size * size * sizeof(float));
 
@@ -151,6 +152,7 @@ float* perlin2d_cpu(int size, double frequency, int octaves) {
     return noise;
 }
 
+// Find x and y index by block and 
 __global__
 void perlin2d_gpu(int size, double frequency, int octaves, float* values) {
     int x = blockIdx.x * blockDim.x + threadIdx.x;
@@ -174,17 +176,18 @@ void perlin2d_gpu(int size, double frequency, int octaves, float* values) {
     values[x + y * size] = fin/div;
 }
 
+// Saves an float array as an bitmap image to disk
 void save_image(char* filename, float* noise, int size) {
     BMP cpu_output = BMP(size, size, false);
     for (int i = 0; i < size * size; i++) {
         int y = i / size;
         int x = i - y * size;
-        //printf("%f\n", noise[i]);
         cpu_output.set_pixel(x, y, noise[i] * 255, noise[i] * 255, noise[i] * 255, 1);
     }
     cpu_output.write(filename);
 }
 
+// Random noise used as a comparison to perlin noise
 float* random_noise(int size) {
     float* noise = (float*)malloc(size * size * sizeof(float));
 
@@ -195,6 +198,7 @@ float* random_noise(int size) {
     return noise;
 }
 
+// Run the cpu program for x repititions and calculate the average runtime
 void testCPU(int repeats, int size) {
     clock_t start, end;
     float diff = 0;
@@ -209,6 +213,7 @@ void testCPU(int repeats, int size) {
     printf("Calculation on CPU took an average of %f seconds over %i executions\n", diff / repeats, repeats);
 }
 
+// Run the gpu program for x repititions and calculate the average runtime
 void testGPU(int repeats, int size) {
     clock_t start, end;
     float diff = 0;
